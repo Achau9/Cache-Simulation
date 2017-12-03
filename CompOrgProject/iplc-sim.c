@@ -364,16 +364,49 @@ void iplc_sim_process_pipeline_sw(int src_reg, int base_reg, unsigned int data_a
 void iplc_sim_process_pipeline_branch(int reg1, int reg2)
 {
     /* You must implement this function */
+    //look at reg1 and reg2
+    //Inspect the program counter difference between the branch instruction
+    //and whatever instruction comes next
+    //That'll tell us if we take it to branching statistic
+    //reg1 and reg2 may clue in to a hazard
+
+    //In practice, "all" pipeline stalls are nops.
+
+    //I ought to adjust that difference check
+    //between program counters
+
+    iplc_sim_push_pipeline_stage();
+
+    pipeline[FETCH].itype = BRANCH; //ALL CAPS REEEEE
+    pipeline[FETCH].instruction_address = instruction_address;
+
+    pipeline[FETCH].stage.branch.reg1 = reg1;
+    pipeline[FETCH].stage.branch.reg2 = reg2;
 }
 
 void iplc_sim_process_pipeline_jump(char *instruction)
 {
     /* You must implement this function */
+     //Go forward to the next instruction (named in var instruction)
+
+    iplc_sim_push_pipeline_stage();
+
+
+    pipeline[FETCH].itype = JUMP;
+    pipeline[FETCH].instruction_address = instruction_address;
+    strcpy(pipeline[FETCH].stage.jump.instruction, instruction);
+
 }
 
 void iplc_sim_process_pipeline_syscall()
 {
     /* You must implement this function */
+    //printf? //reach out to OS.
+
+    iplc_sim_push_pipeline_stage();
+
+    pipeline[FETCH].itype = SYSCALL;
+    pipeline[FETCH].instruction_address = instruction_address;
 }
 
 void iplc_sim_process_pipeline_nop()
