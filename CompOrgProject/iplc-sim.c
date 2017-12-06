@@ -257,8 +257,8 @@ int iplc_sim_trap_address(unsigned int address)
     int hit=0;
     
     // get the index.
-    index = address % cache_index;
-    tag = address / cache_index;
+    index = (address >> cache_blockoffsetbits) % (1 << cache_index);
+    tag = address >> (cache_index + cache_blockoffsetbits);
     cache_access++;
     // Call the appropriate function for a miss or hit
 
@@ -366,35 +366,52 @@ void iplc_sim_push_pipeline_stage()
     }
     
     /* 2. Check for BRANCH and correct/incorrect Branch Prediction */
-    if (pipeline[DECODE].itype == BRANCH) {
-        int branch_taken = 0;
-    }
     
+
     /* 3. Check for LW delays due to use in ALU stage and if data hit/miss
      *    add delay cycles if needed.
      */
     if (pipeline[MEM].itype == LW) {
         int inserted_nop = 0;
+        // hit or miss
+        data_hit = iplc_sim_trap_address(pipeline[MEM].stage.lw.data_address);
+
+        // Hazard when alu rtype registers conflicts with lw destination
+        if ((pipeline[ALU].itype == RTYPE) && ((pipeline[ALU].stage.rtype.reg1 == pipeline[MEM].stage.lw.dest_reg) ||
+             (pipeline[ALU].stage.rtype.reg2_or_constant == pipeline[MEM].stage.lw.dest_reg))) {
+            pipeline_cycles++;
+            pipeline[WRITEBACK] = pipeline[MEM];
+            bzero(&pipeline[MEM], sizeof(pipeline_t));
+            
+            instruction_count++;
+            inserted_nop = 1;
+        }
+
+        // Apply 10(Cache_miss_delay) cycle stall
+        if (data_hit == 0) {
+            // Subtract by inserted_nop being 1 or 0
+            pipeline_cycles += CACHE_MISS_DELAY - inserted_nop - 1;
+        }
     }
     
     /* 4. Check for SW mem acess and data miss .. add delay cycles if needed */
     if (pipeline[MEM].itype == SW) {
+        if(!iplc_sim_trap_address(pipeline[MEM].stage.sw.data_address)){
+            pipeline_cycles+=CACHE_MISS_DELAY-1;
+        }
     }
     
     /* 5. Increment pipe_cycles 1 cycle for normal processing */
+    //pipecycles is pipeline_cycles!!!
+
+    pipeline_cycles++;
     /* 6. push stages thru MEM->WB, ALU->MEM, DECODE->ALU, FETCH->DECODE */
     // Set conditionals(Create a bunch of if statements) to check for which itype is used. current itype= lw:  pipeline[FETCH].itype == lw set each -->
     //argument to the next stage. pipeline[DECODE].itype == lw 
     //pipeline[DECODE].stage.lw.dest_reg==pipeline[FETCH].stage.lw.dest_reg;etc
-    // if(pipleine[FETCH].itype==RTYPE){
-
-    // }else if(pipeline[FETCH].itype==LW){
-
-    // }else if(pipeline[FETCH].itype==SW){
-    // }else if(pipeline[FETCH].itype==BRANCH){
-    // }else if(pipeline[FETCH].itype==JUMP){
-    // }else if(pipeline[FETCH].itype==){
-    // }
+    for(i=1;i<MAX_STAGES;i++){
+        pipeline[MAX_STAGES-i] = pipeline[MAX_STAGES-i-1];
+    }
 
     
     // 7. This is a give'me -- Reset the FETCH stage to NOP via bezero */
