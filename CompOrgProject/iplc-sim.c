@@ -9,7 +9,7 @@
 #include <string.h>
 #include <math.h>
 
-#define MAX_CACHE_SIZE 10240
+#define MAX_CACHE_SIZE 10240 // 2^13 = 8192
 #define CACHE_MISS_DELAY 10 // 10 cycle cache miss penalty
 #define MAX_STAGES 5
 
@@ -44,6 +44,12 @@ typedef struct cache_line
     // a tag
     // a method for handling varying levels of associativity
     // a method for selecting which item in the cache is going to be replaced
+
+    // have an array of valid, tag and replace
+    int *valid; // 0 - false, 1 - true
+    int *tag; // value for tag.  
+    int assoc; // 1 (direct-mapped), 2 (2-way set associative) 4 (4-way set associative)
+    // int *replace;
 } cache_line_t;
 
 cache_line_t *cache=NULL;
@@ -163,10 +169,16 @@ void iplc_sim_init(int index, int blocksize, int assoc)
         exit(-1);
     }
     
+    // cache is first index of a cache_line_t array. has 2^index entries
     cache = (cache_line_t *) malloc((sizeof(cache_line_t) * 1<<index));
     
     // Dynamically create our cache based on the information the user entered
+    // for each of the entries in the array set struct data
     for (i = 0; i < (1<<index); i++) {
+        cache[i].assoc = assoc;
+        cache[i].tag = (int *) malloc(sizeof(int)*assoc); // doesn't matter
+        cache[i].valid = (int *) calloc(assoc, sizeof(int)); // initialize to 0
+        // cache[i].replace = (int *) calloc(assoc, sizeof(int)); // initialize to 0
     }
     
     // init the pipeline -- set all data to zero and instructions to NOP
@@ -183,15 +195,53 @@ void iplc_sim_init(int index, int blocksize, int assoc)
 void iplc_sim_LRU_replace_on_miss(int index, int tag)
 {
     /* You must implement this function */
+    int i = 0, j = 0;
+    // Look for empty entry at index
+    for (i; i < cache_assoc; i++){
+        if (cache[index].valid[i] == 0){ // found empty slot. shift everything
+            for (j = i; j > 0; j--){
+                // cache[index].replace[j] = cache[index].replace[j-1];
+                cache[index].valid[j] = cache[index].valid[j-1];
+                cache[index].tag[j] = cache[index].tag[j-1];
+            }
+            // cache[index].replace[0] = 1;
+            cache[index].valid[0] = 1; // not necessary
+            cache[index].tag[0] = tag;
+            return;
+        }
+    }
+    // No empty entry. Shift entries up and put new tag into entry 0.
+    for (i = cache_assoc - 1; i > 0; i--){
+        // cache[index].replace[i] = cache[index].replace[i-1];
+        cache[index].valid[i] = cache[index].valid[i-1];
+        cache[index].tag[i] = cache[index].tag[i-1];
+    }
+    // cache[index].replace[0] = 1;
+    cache[index].valid[0] = 1; // not necessary
+    cache[index].tag[0] = tag;
+    return;
 }
+void iplc_sim_LRU_update_on_hit(int index, int assoc_entry)
+{
+    /* You must implement this function */
 
 /*
  * iplc_sim_trap_address() determined the entry is in our cache.  Update its
  * information in the cache.
  */
-void iplc_sim_LRU_update_on_hit(int index, int assoc_entry)
-{
-    /* You must implement this function */
+    int i = 0;
+    // int rep_t = cache[index].replace[assoc_entry];
+    int tag_t = cache[index].tag[assoc_entry];
+    // updating info means move entry to Most Recently Used  entry (0). shift everything over.
+    for (i = assoc_entry; i > 0; i--){
+        // cache[index].replace[i] = cache[index].replace[i-1];
+        cache[index].valid[i] = cache[index].valid[i-1];
+        cache[index].tag[i] = cache[index].tag[i-1];
+    }
+    // cache[index].replace[0] = rep_t;
+    cache[index].valid[0] = 1; // not necessary
+    cache[index].tag[0] = tag_t;
+    return;
 }
 
 /*
@@ -206,8 +256,26 @@ int iplc_sim_trap_address(unsigned int address)
     int tag=0;
     int hit=0;
     
+    // get the index.
+    index = (address >> cache_blockoffsetbits) % (1 << cache_index);
+    tag = address >> (cache_index + cache_blockoffsetbits);
+    cache_access++;
     // Call the appropriate function for a miss or hit
 
+    // look for a hit. check multiple entries at the index
+    for (i; i < cache_assoc; i++){
+        if (cache[index].valid[i] == 1 && cache[index].tag[i] == tag){
+            hit = 1;
+            cache_hit++;
+            iplc_sim_LRU_update_on_hit(index, i);
+            break;
+        }
+    }
+    // nothing hit, so run function for a miss
+    if (hit == 0){
+        iplc_sim_LRU_replace_on_miss(index, tag);
+        cache_miss++;
+    }
     /* expects you to return 1 for hit, 0 for miss */
     return hit;
 }
@@ -280,6 +348,12 @@ void iplc_sim_dump_pipeline()
  */
 void iplc_sim_push_pipeline_stage()
 {
+    /* Questions for Office hours. Confirm the amount of cache access from your terminal and the number of the cache instructions 
+    on the instruction.txt file.
+    Ask about whether the ouput of teh cache performance is indenpendent from the pipeline
+
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~________________________~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    */
     int i;
     int data_hit=1;
     
@@ -292,6 +366,7 @@ void iplc_sim_push_pipeline_stage()
     }
     
     /* 2. Check for BRANCH and correct/incorrect Branch Prediction */
+
     if (pipeline[DECODE].itype == BRANCH) {
         int branch_taken = 0;
         //branch_predict_taken takes value 0,1
@@ -339,13 +414,7 @@ void iplc_sim_push_pipeline_stage()
         //increase branch_count
         branch_count++;
     }
-    
-    /* 3. Check for LW delays due to use in ALU stage and if data hit/miss
-     *    add delay cycles if needed.
-     */
-    if (pipeline[MEM].itype == LW) {
-        int inserted_nop = 0;
-        //pp.314 of textbook:
+    //pp.314 of textbook:
         /*
         if(ID/EX.MemRead and
             ((ID/EX.RegisterRt = IF/ID.RegisterRs) or
@@ -356,10 +425,37 @@ void iplc_sim_push_pipeline_stage()
         //Effectively, check for data dependencies (if there is one)
         //for instance, for immediates (li), dependencies don't exist
         //In which case, don't stall the pipeline.
+
+    /* 3. Check for LW delays due to use in ALU stage and if data hit/miss
+     *    add delay cycles if needed.
+     */
+    if (pipeline[MEM].itype == LW) {
+        int inserted_nop = 0;
+        // hit or miss
+        data_hit = iplc_sim_trap_address(pipeline[MEM].stage.lw.data_address);
+
+        // Hazard when alu rtype registers conflicts with lw destination
+        if ((pipeline[ALU].itype == RTYPE) && ((pipeline[ALU].stage.rtype.reg1 == pipeline[MEM].stage.lw.dest_reg) ||
+             (pipeline[ALU].stage.rtype.reg2_or_constant == pipeline[MEM].stage.lw.dest_reg))) {
+            pipeline_cycles++;
+            pipeline[WRITEBACK] = pipeline[MEM];
+            bzero(&pipeline[MEM], sizeof(pipeline_t));
+            
+            instruction_count++;
+            inserted_nop = 1;
+        }
+
+        // Apply 10(Cache_miss_delay) cycle stall
+        if (data_hit == 0) {
+            // Subtract by inserted_nop being 1 or 0
+            pipeline_cycles += CACHE_MISS_DELAY - inserted_nop - 1;
+        }
+>>>>>>> 792ef8b25da6374624c4e9e0f4a270e15fda89ea
     }
     
     /* 4. Check for SW mem acess and data miss .. add delay cycles if needed */
     if (pipeline[MEM].itype == SW) {
+<<<<<<< HEAD
         //When doing a SW, consider the cache (has inst or data)
         //Store word stores data to a destination address
         //It's a matter of seeing if the cache HAS that data
@@ -374,6 +470,25 @@ void iplc_sim_push_pipeline_stage()
     /* 6. push stages thru MEM->WB, ALU->MEM, DECODE->ALU, FETCH->DECODE */
 
     /* ALSTON THE MVP */
+=======
+        if(!iplc_sim_trap_address(pipeline[MEM].stage.sw.data_address)){
+            pipeline_cycles+=CACHE_MISS_DELAY-1;
+        }
+    }
+    
+    /* 5. Increment pipe_cycles 1 cycle for normal processing */
+    //pipecycles is pipeline_cycles!!!
+
+    pipeline_cycles++;
+    /* 6. push stages thru MEM->WB, ALU->MEM, DECODE->ALU, FETCH->DECODE */
+    // Set conditionals(Create a bunch of if statements) to check for which itype is used. current itype= lw:  pipeline[FETCH].itype == lw set each -->
+    //argument to the next stage. pipeline[DECODE].itype == lw 
+    //pipeline[DECODE].stage.lw.dest_reg==pipeline[FETCH].stage.lw.dest_reg;etc
+    for(i=1;i<MAX_STAGES;i++){
+        pipeline[MAX_STAGES-i] = pipeline[MAX_STAGES-i-1];
+    }
+
+>>>>>>> 792ef8b25da6374624c4e9e0f4a270e15fda89ea
     
     // 7. This is a give'me -- Reset the FETCH stage to NOP via bezero */
     bzero(&(pipeline[FETCH]), sizeof(pipeline_t));
