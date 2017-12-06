@@ -294,6 +294,50 @@ void iplc_sim_push_pipeline_stage()
     /* 2. Check for BRANCH and correct/incorrect Branch Prediction */
     if (pipeline[DECODE].itype == BRANCH) {
         int branch_taken = 0;
+        //branch_predict_taken takes value 0,1
+        //if branch_taken == branch_predict_taken, then the call was right
+        //Otherwise, it was wrong
+        //We need to compare addresses.
+
+        //Compare program counter of following instruction to program counter of current instruction
+        //plus the increment-third-argument of the BRANCH inst
+
+        
+        //pipeline[FETCH].instruction_address;
+        //pipeline[DECODE].instruction_address;
+        if(pipeline[FETCH].instruction_address){//check for existence
+           if(pipeline[FETCH].instruction_address - pipeline[DECODE].instruction_address != 4){
+                //This branch is taken
+                branch_taken = 1;
+           }
+           else{
+                //This branch is NOT taken
+                branch_taken = 0;
+           }
+        }
+        if(branch_taken == branch_predict_taken){
+            //Correct prediction
+            correct_branch_predictions++;
+        }
+        else{
+            //Incorrect prediction
+            for(i = 2; i < MAX_STAGES; i++){
+                pipeline[MAX_STAGES-i] = pipeline[MAX_STAGES-i-1]; 
+                //move data over by a stage
+                //starting at DECODE, not FETCH.
+            }
+            bzero(&(pipeline[DECODE]), sizeof(pipeline_t));//force a nop
+            pipeline_cycles++; //increase cycles to reflect stall
+
+        }
+        //be able to tell if a branch was taken
+        //if branch taken, update stats
+        //if not taken,
+        //Correct prediction? update statistics and nothing happens
+        //If wrong prediction, force a nop and update stats
+
+        //increase branch_count
+        branch_count++;
     }
     
     /* 3. Check for LW delays due to use in ALU stage and if data hit/miss
@@ -301,14 +345,35 @@ void iplc_sim_push_pipeline_stage()
      */
     if (pipeline[MEM].itype == LW) {
         int inserted_nop = 0;
+        //pp.314 of textbook:
+        /*
+        if(ID/EX.MemRead and
+            ((ID/EX.RegisterRt = IF/ID.RegisterRs) or
+            (ID/EX.RegisterRt = IF/ID.RegisterRt)))
+                stall the pipeline
+        */
+        //Implement something similar to this
+        //Effectively, check for data dependencies (if there is one)
+        //for instance, for immediates (li), dependencies don't exist
+        //In which case, don't stall the pipeline.
     }
     
     /* 4. Check for SW mem acess and data miss .. add delay cycles if needed */
     if (pipeline[MEM].itype == SW) {
+        //When doing a SW, consider the cache (has inst or data)
+        //Store word stores data to a destination address
+        //It's a matter of seeing if the cache HAS that data
+        //If that data IS in the cache, add a cache hit. and continue
+        //Otherwise, treat it as a miss and continue.
     }
     
     /* 5. Increment pipe_cycles 1 cycle for normal processing */
+    pipeline_cycles++;
+    
+    
     /* 6. push stages thru MEM->WB, ALU->MEM, DECODE->ALU, FETCH->DECODE */
+
+    /* ALSTON THE MVP */
     
     // 7. This is a give'me -- Reset the FETCH stage to NOP via bezero */
     bzero(&(pipeline[FETCH]), sizeof(pipeline_t));
@@ -337,7 +402,7 @@ void iplc_sim_process_pipeline_lw(int dest_reg, int base_reg, unsigned int data_
     /* You must implement this function */
     iplc_sim_push_pipeline_stage();
     //itype defined at enum
-    pipelineline[FETCH].itype = LW;
+    pipeline[FETCH].itype = LW;
     pipeline[FETCH].instruction_address = instruction_address;
     //Doing .lw to store each variable defined in the typedef and the arguments
     pipeline[FETCH].stage.lw.dest_reg=dest_reg;
@@ -352,7 +417,7 @@ void iplc_sim_process_pipeline_sw(int src_reg, int base_reg, unsigned int data_a
     /* You must implement this function */
     iplc_sim_push_pipeline_stage();
     //itype defined at enum
-    pipelineline[FETCH].itype = SW;
+    pipeline[FETCH].itype = SW;
     pipeline[FETCH].instruction_address = instruction_address;
     //Doing .sw to store each variable defined in the typedef and the arguments
     pipeline[FETCH].stage.sw.src_reg=src_reg;
@@ -414,7 +479,7 @@ void iplc_sim_process_pipeline_nop()
     /* You must implement this function */
     iplc_sim_push_pipeline_stage();
     //itype defined at enum
-    pipelineline[FETCH].itype = NOP;
+    pipeline[FETCH].itype = NOP;
     pipeline[FETCH].instruction_address = instruction_address;
 }
 
