@@ -366,7 +366,7 @@ void iplc_sim_push_pipeline_stage()
     }
     
     /* 2. Check for BRANCH and correct/incorrect Branch Prediction */
-    /* 2. Check for BRANCH and correct/incorrect Branch Prediction */
+
 
     if (pipeline[DECODE].itype == BRANCH) {
         int branch_taken = 0;
@@ -378,7 +378,7 @@ void iplc_sim_push_pipeline_stage()
         //Compare program counter of following instruction to program counter of current instruction
         //plus the increment-third-argument of the BRANCH inst
 
-        branch_count++;
+
         //pipeline[FETCH].instruction_address;
         //pipeline[DECODE].instruction_address;
         if(pipeline[FETCH].instruction_address){//check for existence
@@ -390,6 +390,7 @@ void iplc_sim_push_pipeline_stage()
                 //This branch is NOT taken
                 branch_taken = 0;
            }
+
            if(branch_taken == branch_predict_taken){
             //Correct prediction
             correct_branch_predictions++;
@@ -407,6 +408,7 @@ void iplc_sim_push_pipeline_stage()
             }
         }
             
+
         //be able to tell if a branch was taken
         //if branch taken, update stats
         //if not taken,
@@ -414,7 +416,7 @@ void iplc_sim_push_pipeline_stage()
         //If wrong prediction, force a nop and update stats
 
         //increase branch_count
-        
+
     }
     //pp.314 of textbook:
         /*
@@ -452,6 +454,7 @@ void iplc_sim_push_pipeline_stage()
             // Subtract by inserted_nop being 1 or 0
             pipeline_cycles += CACHE_MISS_DELAY - inserted_nop - 1;
         }
+>>>>>>> 792ef8b25da6374624c4e9e0f4a270e15fda89ea
     }
     
     /* 4. Check for SW mem acess and data miss .. add delay cycles if needed */
