@@ -366,6 +366,68 @@ void iplc_sim_push_pipeline_stage()
     }
     
     /* 2. Check for BRANCH and correct/incorrect Branch Prediction */
+    /* 2. Check for BRANCH and correct/incorrect Branch Prediction */
+
+    if (pipeline[DECODE].itype == BRANCH) {
+        int branch_taken = 0;
+        //branch_predict_taken takes value 0,1
+        //if branch_taken == branch_predict_taken, then the call was right
+        //Otherwise, it was wrong
+        //We need to compare addresses.
+
+        //Compare program counter of following instruction to program counter of current instruction
+        //plus the increment-third-argument of the BRANCH inst
+
+        branch_count++;
+        //pipeline[FETCH].instruction_address;
+        //pipeline[DECODE].instruction_address;
+        if(pipeline[FETCH].instruction_address){//check for existence
+           if(pipeline[FETCH].instruction_address - pipeline[DECODE].instruction_address != 4){
+                //This branch is taken
+                branch_taken = 1;
+           }
+           else{
+                //This branch is NOT taken
+                branch_taken = 0;
+           }
+           if(branch_taken == branch_predict_taken){
+            //Correct prediction
+            correct_branch_predictions++;
+            }else{
+                //Incorrect prediction
+                memcpy(&pipeline[WRITEBACK], &pipeline[MEM], sizeof(pipeline_t));
+                memcpy(&pipeline[MEM], &pipeline[ALU], sizeof(pipeline_t));
+                memcpy(&pipeline[ALU], &pipeline[DECODE], sizeof(pipeline_t));
+                
+                bzero(&(pipeline[DECODE]), sizeof(pipeline_t));//force a nop
+                pipeline_cycles++; //increase cycles to reflect stall
+                if(pipeline[WRITEBACK].instruction_address){
+                        instruction_count++;
+                }
+            }
+        }
+            
+        //be able to tell if a branch was taken
+        //if branch taken, update stats
+        //if not taken,
+        //Correct prediction? update statistics and nothing happens
+        //If wrong prediction, force a nop and update stats
+
+        //increase branch_count
+        
+    }
+    //pp.314 of textbook:
+        /*
+        if(ID/EX.MemRead and
+            ((ID/EX.RegisterRt = IF/ID.RegisterRs) or
+            (ID/EX.RegisterRt = IF/ID.RegisterRt)))
+                stall the pipeline
+        */
+        //Implement something similar to this
+        //Effectively, check for data dependencies (if there is one)
+        //for instance, for immediates (li), dependencies don't exist
+        //In which case, don't stall the pipeline.
+
     /* 3. Check for LW delays due to use in ALU stage and if data hit/miss
      *    add delay cycles if needed.
      */
